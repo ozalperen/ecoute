@@ -2,28 +2,45 @@ import openai
 from keys import OPENAI_API_KEY
 from prompts import create_prompt, INITIAL_RESPONSE
 import time
-
+import requests
+API_URL = "https://tofaslive.cereinsight.com/api/teams/chat"
+API_KEY = "sk-xx6bvjpmx8inzdhfmy8spf518izga9obtdq7y6vcr"
 openai.api_key = OPENAI_API_KEY
-
 def generate_response_from_transcript(transcript):
+    headers = {
+        'x-api-key': API_KEY,
+        'Content-Type': 'application/json'
+    }
+    
+    data = {
+        'question': transcript
+    }
+    
     try:
-        response = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "system", "content": create_prompt(transcript)}],
-                temperature = 0.0
-        )
+        response = requests.post(API_URL, headers=headers, json=data)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        
+        response_data = response.json()
+        
+        # Extract the content from the response structure
+        if (response_data and 
+            'text' in response_data and 
+            'choices' in response_data['text'] and 
+            len(response_data['text']['choices']) > 0 and 
+            'message' in response_data['text']['choices'][0] and 
+            'content' in response_data['text']['choices'][0]['message']):
+            
+            return response_data['text']['choices'][0]['message']['content']
+            
     except Exception as e:
-        print(e)
+        print(f"Error making API request: {e}")
         return ''
-    full_response = response.choices[0].message.content
-    try:
-        return full_response.split('[')[1].split(']')[0]
-    except:
-        return ''
+        
+    return ''
     
 class GPTResponder:
     def __init__(self):
-        self.response = INITIAL_RESPONSE
+        self.response = "Başlangıç mesajı..."  
         self.response_interval = 2
 
     def respond_to_transcriber(self, transcriber):
@@ -35,8 +52,8 @@ class GPTResponder:
                 transcript_string = transcriber.get_transcript()
                 response = generate_response_from_transcript(transcript_string)
                 
-                end_time = time.time()  # Measure end time
-                execution_time = end_time - start_time  # Calculate the time it took to execute the function
+                end_time = time.time()
+                execution_time = end_time - start_time
                 
                 if response != '':
                     self.response = response
