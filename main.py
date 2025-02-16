@@ -9,36 +9,76 @@ import torch
 import sys
 import TranscriberModels
 import subprocess
+from datetime import datetime
 
-def write_in_textbox(textbox, text):
-    textbox.delete("0.0", "end")
-    textbox.insert("0.0", text)
-    textbox.see("end")  # Scroll to the end of the text
-
+class ResponseManager:
+    def __init__(self):
+        self.responses = []
+        self.last_response = ""
+    
+    def add_response(self, text):
+        if text != self.last_response and text.strip():
+            self.responses.append(text)
+            self.last_response = text
+    
+    def get_formatted_responses(self):
+        return "\n\n".join(self.responses)
+    
+    def clear_responses(self):
+        self.responses.clear()
+        self.last_response = ""
 
 def update_transcript_UI(transcriber, textbox):
     transcript_string = transcriber.get_transcript()
-    write_in_textbox(textbox, transcript_string)
+    
+    # Configure tags for different speakers
+    try:
+        textbox.tag_config("siz", foreground='#FFFCF2')     # User messages
+        textbox.tag_config("musteri", foreground='#FF9500') # Speaker messages
+    except Exception:
+        # Tags might already be configured
+        pass
+    
+    # Clear the textbox
+    textbox.delete("0.0", "end")
+    
+    # Insert transcript lines
+    lines = transcript_string.split('\n\n')
+    for line in lines:
+        if not line.strip():
+            continue
+            
+        if line.startswith("Siz:"):
+            textbox.insert("end", line + "\n\n", "siz")
+        elif line.startswith("Musteri:"):
+            textbox.insert("end", line + "\n\n", "musteri")
+        else:
+            # Fallback for any other text
+            textbox.insert("end", line + "\n\n")
+    
+    textbox.see("end")  # Scroll to the end
     textbox.after(300, update_transcript_UI, transcriber, textbox)
 
-def update_response_UI(responder, textbox, update_interval_slider_label, update_interval_slider, freeze_state):
+def update_response_UI(responder, response_manager, textbox, update_interval_slider_label, update_interval_slider, freeze_state):
     if not freeze_state[0]:
-        response = responder.response
-
+        # Add new response if it changed
+        response_manager.add_response(responder.response)
+        
+        # Update textbox with all responses
         textbox.configure(state="normal")
-        write_in_textbox(textbox, response)
+        textbox.delete("0.0", "end")
+        textbox.insert("0.0", response_manager.get_formatted_responses())
         textbox.configure(state="disabled")
-
+        
         update_interval = int(update_interval_slider.get())
         responder.update_response_interval(update_interval)
-        update_interval_slider_label.configure(text=f"Güncelleme sıklığı: {update_interval} saniye")
-
-    textbox.after(300, update_response_UI, responder, textbox, update_interval_slider_label, update_interval_slider, freeze_state)
-
-def clear_context(transcriber, audio_queue):
-    transcriber.clear_transcript_data()
-    with audio_queue.mutex:
-        audio_queue.queue.clear()
+        update_interval_slider_label.configure(text=f"Update interval: {update_interval} seconds")
+        
+    # Scroll to the end
+    textbox.see("end")
+    
+    textbox.after(300, update_response_UI, responder, response_manager, textbox, 
+                 update_interval_slider_label, update_interval_slider, freeze_state)
 
 def create_ui_components(root):
     ctk.set_appearance_mode("dark")
@@ -67,6 +107,12 @@ def create_ui_components(root):
 
     return transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button
 
+def clear_context(transcriber, audio_queue, response_manager):
+    transcriber.clear_transcript_data()
+    response_manager.clear_responses()
+    with audio_queue.mutex:
+        audio_queue.queue.clear()
+
 def main():
     try:
         subprocess.run(["ffmpeg", "-version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -78,6 +124,7 @@ def main():
     transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button = create_ui_components(root)
 
     audio_queue = queue.Queue()
+    response_manager = ResponseManager()
 
     user_audio_recorder = AudioRecorder.DefaultMicRecorder()
     user_audio_recorder.record_into_queue(audio_queue)
@@ -108,8 +155,9 @@ def main():
     root.grid_columnconfigure(0, weight=2)
     root.grid_columnconfigure(1, weight=1)
 
-     # Add the clear transcript button to the UI
-    clear_transcript_button = ctk.CTkButton(root, text="Yeni Konuşma", command=lambda: clear_context(transcriber, audio_queue, ))
+    # Add the clear transcript button to the UI
+    clear_transcript_button = ctk.CTkButton(root, text="Yeni Konuşma", 
+                                          command=lambda: clear_context(transcriber, audio_queue, response_manager))
     clear_transcript_button.grid(row=1, column=0, padx=10, pady=3, sticky="nsew")
 
     freeze_state = [False]  # Using list to be able to change its content inside inner functions
@@ -122,7 +170,8 @@ def main():
     update_interval_slider_label.configure(text=f"Update interval: {update_interval_slider.get()} seconds")
 
     update_transcript_UI(transcriber, transcript_textbox)
-    update_response_UI(responder, response_textbox, update_interval_slider_label, update_interval_slider, freeze_state)
+    update_response_UI(responder, response_manager, response_textbox, 
+                       update_interval_slider_label, update_interval_slider, freeze_state)
  
     root.mainloop()
 
