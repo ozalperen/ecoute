@@ -88,12 +88,45 @@ def create_ui_components(root):
     root.geometry("1000x600")
 
     font_size = 20
+    title_font_size = 24
 
-    transcript_textbox = ctk.CTkTextbox(root, width=300, font=("Arial", font_size), text_color='#FFFCF2', wrap="word")
-    transcript_textbox.grid(row=0, column=0, padx=10, pady=20, sticky="nsew")
+    # Create a frame for transcript section
+    transcript_frame = ctk.CTkFrame(root, fg_color="transparent")
+    transcript_frame.grid(row=0, column=0, padx=10, pady=(5,20), sticky="nsew")
+    
+    # Transcript title
+    transcript_title = ctk.CTkLabel(transcript_frame, 
+                                  text="Transcript", 
+                                  font=("Arial", title_font_size, "bold"),
+                                  text_color='#FFFCF2')
+    transcript_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
+    
+    # Transcript textbox
+    transcript_textbox = ctk.CTkTextbox(transcript_frame, 
+                                      width=300, 
+                                      font=("Arial", font_size), 
+                                      text_color='#FFFCF2', 
+                                      wrap="word")
+    transcript_textbox.grid(row=1, column=0, sticky="nsew")
 
-    response_textbox = ctk.CTkTextbox(root, width=300, font=("Arial", font_size), text_color='#639cdc', wrap="word")
-    response_textbox.grid(row=0, column=1, padx=10, pady=20, sticky="nsew")
+    # Create a frame for suggestions section
+    suggestions_frame = ctk.CTkFrame(root, fg_color="transparent")
+    suggestions_frame.grid(row=0, column=1, padx=10, pady=(5,20), sticky="nsew")
+    
+    # Suggestions title
+    suggestions_title = ctk.CTkLabel(suggestions_frame, 
+                                   text="Suggestions", 
+                                   font=("Arial", title_font_size, "bold"),
+                                   text_color='#FFFCF2')
+    suggestions_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
+    
+    # Suggestions textbox
+    response_textbox = ctk.CTkTextbox(suggestions_frame, 
+                                    width=300, 
+                                    font=("Arial", font_size), 
+                                    text_color='#639cdc', 
+                                    wrap="word")
+    response_textbox.grid(row=1, column=0, sticky="nsew")
 
     freeze_button = ctk.CTkButton(root, text="Durdur", command=None)
     freeze_button.grid(row=1, column=1, padx=10, pady=3, sticky="nsew")
@@ -105,13 +138,19 @@ def create_ui_components(root):
     update_interval_slider.set(2)
     update_interval_slider.grid(row=3, column=1, padx=10, pady=10, sticky="nsew")
 
+    # Configure frame grid weights
+    transcript_frame.grid_rowconfigure(1, weight=1)
+    transcript_frame.grid_columnconfigure(0, weight=1)
+    suggestions_frame.grid_rowconfigure(1, weight=1)
+    suggestions_frame.grid_columnconfigure(0, weight=1)
+
     return transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button
 
 def clear_context(transcriber, audio_queue, response_manager):
-    transcriber.clear_transcript_data()
-    response_manager.clear_responses()
+    transcriber.clear_transcript()
     with audio_queue.mutex:
         audio_queue.queue.clear()
+    response_manager.clear_responses()
 
 def main():
     try:

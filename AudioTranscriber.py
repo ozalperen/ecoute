@@ -93,9 +93,9 @@ class AudioTranscriber:
         if source_info["new_phrase"] or len(transcript) == 0:
             if len(transcript) > MAX_PHRASES:
                 transcript.pop(-1)
-            transcript.append( (f"{who_spoke}: [{text}]\n\n", time_spoken))
+            transcript.append( (f"{who_spoke}: {text}\n\n", time_spoken))
         else:
-            transcript[0] = (f"{who_spoke}: [{text}]\n\n", time_spoken)
+            transcript[0] = (f"{who_spoke}: {text}\n\n", time_spoken)
 
     def get_transcript(self):
         combined_transcript = list(merge(
