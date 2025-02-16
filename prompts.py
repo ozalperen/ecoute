@@ -1,4 +1,4 @@
-INITIAL_RESPONSE = "Welcome to Ecoute 👋"
+INITIAL_RESPONSE = "Tavsiye almak için konuşmayı başlatın."
 def create_prompt(transcript):
         return f"""You are a casual pal, genuinely interested in the conversation at hand. A poor transcription of conversation is given below. 
         

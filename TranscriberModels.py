@@ -3,11 +3,11 @@ import whisper
 import os
 import torch
 
-def get_model(use_api):
-    if use_api:
-        return APIWhisperTranscriber()
-    else:
+def get_model(local):
+    if local:
         return WhisperTranscriber()
+    else:
+        return APIWhisperTranscriber()
 
 class WhisperTranscriber:
     def __init__(self):

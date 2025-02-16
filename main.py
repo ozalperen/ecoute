@@ -13,6 +13,8 @@ import subprocess
 def write_in_textbox(textbox, text):
     textbox.delete("0.0", "end")
     textbox.insert("0.0", text)
+    textbox.see("end")  # Scroll to the end of the text
+
 
 def update_transcript_UI(transcriber, textbox):
     transcript_string = transcriber.get_transcript()
@@ -41,7 +43,7 @@ def clear_context(transcriber, audio_queue):
 def create_ui_components(root):
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
-    root.title("Ecoute")
+    root.title("Cere Insight")
     root.configure(bg='#252422')
     root.geometry("1000x600")
 
@@ -53,7 +55,7 @@ def create_ui_components(root):
     response_textbox = ctk.CTkTextbox(root, width=300, font=("Arial", font_size), text_color='#639cdc', wrap="word")
     response_textbox.grid(row=0, column=1, padx=10, pady=20, sticky="nsew")
 
-    freeze_button = ctk.CTkButton(root, text="Freeze", command=None)
+    freeze_button = ctk.CTkButton(root, text="Durdur", command=None)
     freeze_button.grid(row=1, column=1, padx=10, pady=3, sticky="nsew")
 
     update_interval_slider_label = ctk.CTkLabel(root, text=f"", font=("Arial", 12), text_color="#FFFCF2")
@@ -85,7 +87,7 @@ def main():
     speaker_audio_recorder = AudioRecorder.DefaultSpeakerRecorder()
     speaker_audio_recorder.record_into_queue(audio_queue)
 
-    model = TranscriberModels.get_model('--api' in sys.argv)
+    model = TranscriberModels.get_model('--local' in sys.argv)
 
     transcriber = AudioTranscriber(user_audio_recorder.source, speaker_audio_recorder.source, model)
     transcribe = threading.Thread(target=transcriber.transcribe_audio_queue, args=(audio_queue,))
@@ -107,13 +109,13 @@ def main():
     root.grid_columnconfigure(1, weight=1)
 
      # Add the clear transcript button to the UI
-    clear_transcript_button = ctk.CTkButton(root, text="Clear Transcript", command=lambda: clear_context(transcriber, audio_queue, ))
+    clear_transcript_button = ctk.CTkButton(root, text="Yeni Konuşma", command=lambda: clear_context(transcriber, audio_queue, ))
     clear_transcript_button.grid(row=1, column=0, padx=10, pady=3, sticky="nsew")
 
     freeze_state = [False]  # Using list to be able to change its content inside inner functions
     def freeze_unfreeze():
         freeze_state[0] = not freeze_state[0]  # Invert the freeze state
-        freeze_button.configure(text="Unfreeze" if freeze_state[0] else "Freeze")
+        freeze_button.configure(text="Devam Et" if freeze_state[0] else "Duraklat")
 
     freeze_button.configure(command=freeze_unfreeze)
 
