@@ -10,11 +10,13 @@ import sys
 import TranscriberModels
 import subprocess
 from datetime import datetime
+from MarkdownRenderer import MarkdownRenderer
 
 class ResponseManager:
     def __init__(self):
         self.responses = []
         self.last_response = ""
+        self.separator = "─" * 50  # Create a line with 50 dashes
     
     def add_response(self, text):
         if text != self.last_response and text.strip():
@@ -22,7 +24,15 @@ class ResponseManager:
             self.last_response = text
     
     def get_formatted_responses(self):
-        return "\n\n".join(self.responses)
+        # Join responses with the separator line between them
+        if not self.responses:
+            return ""
+            
+        formatted_text = self.responses[0]
+        for response in self.responses[1:]:
+            formatted_text += f"\n\n{self.separator}\n\n{response}"
+            
+        return formatted_text
     
     def clear_responses(self):
         self.responses.clear()
@@ -59,35 +69,34 @@ def update_transcript_UI(transcriber, textbox):
     textbox.see("end")  # Scroll to the end
     textbox.after(300, update_transcript_UI, transcriber, textbox)
 
-def update_response_UI(responder, response_manager, textbox, update_interval_slider_label, update_interval_slider, freeze_state):
+def update_response_UI(responder, response_manager, textbox, markdown_renderer, update_interval_slider_label, update_interval_slider, freeze_state):
     if not freeze_state[0]:
         # Add new response if it changed
         response_manager.add_response(responder.response)
         
-        # Update textbox with all responses
-        textbox.configure(state="normal")
-        textbox.delete("0.0", "end")
-        textbox.insert("0.0", response_manager.get_formatted_responses())
-        textbox.configure(state="disabled")
+        # Get formatted responses and render markdown
+        formatted_text = response_manager.get_formatted_responses()
+        markdown_renderer.render_markdown(formatted_text)
         
         update_interval = int(update_interval_slider.get())
         responder.update_response_interval(update_interval)
         update_interval_slider_label.configure(text=f"Update interval: {update_interval} seconds")
-        
+    
     # Scroll to the end
     textbox.see("end")
     
-    textbox.after(300, update_response_UI, responder, response_manager, textbox, 
-                 update_interval_slider_label, update_interval_slider, freeze_state)
+    textbox.after(300, update_response_UI, responder, response_manager, textbox,
+                 markdown_renderer, update_interval_slider_label, 
+                 update_interval_slider, freeze_state)
 
 def create_ui_components(root):
     ctk.set_appearance_mode("dark")
     ctk.set_default_color_theme("dark-blue")
     root.title("Cere Insight")
     root.configure(bg='#252422')
-    root.geometry("1000x600")
+    root.geometry("1200x600")
 
-    font_size = 20
+    font_size = 13
     title_font_size = 24
 
     # Create a frame for transcript section
@@ -96,14 +105,14 @@ def create_ui_components(root):
     
     # Transcript title
     transcript_title = ctk.CTkLabel(transcript_frame, 
-                                  text="Transcript", 
+                                  text="Transkript", 
                                   font=("Arial", title_font_size, "bold"),
                                   text_color='#FFFCF2')
     transcript_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
     
     # Transcript textbox
     transcript_textbox = ctk.CTkTextbox(transcript_frame, 
-                                      width=300, 
+                                      width=50, 
                                       font=("Arial", font_size), 
                                       text_color='#FFFCF2', 
                                       wrap="word")
@@ -115,14 +124,14 @@ def create_ui_components(root):
     
     # Suggestions title
     suggestions_title = ctk.CTkLabel(suggestions_frame, 
-                                   text="Suggestions", 
+                                   text="Öneriler", 
                                    font=("Arial", title_font_size, "bold"),
                                    text_color='#FFFCF2')
     suggestions_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
     
     # Suggestions textbox
     response_textbox = ctk.CTkTextbox(suggestions_frame, 
-                                    width=300, 
+                                    width=700, 
                                     font=("Arial", font_size), 
                                     text_color='#639cdc', 
                                     wrap="word")
@@ -146,11 +155,20 @@ def create_ui_components(root):
 
     return transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button
 
-def clear_context(transcriber, audio_queue, response_manager):
-    transcriber.clear_transcript()
+def clear_context(transcriber, audio_queue, response_manager, response_textbox, responder):
+    # Clear all stored data
+    transcriber.clear_transcript_data()
+    response_manager.clear_responses()
+    responder.response = ""  # Reset the responder's current response
+    
+    # Clear the audio queue
     with audio_queue.mutex:
         audio_queue.queue.clear()
-    response_manager.clear_responses()
+    
+    # Update the UI immediately
+    response_textbox.configure(state="normal")
+    response_textbox.delete("0.0", "end")
+    response_textbox.configure(state="disabled")
 
 def main():
     try:
@@ -174,6 +192,7 @@ def main():
     speaker_audio_recorder.record_into_queue(audio_queue)
 
     model = TranscriberModels.get_model('--local' in sys.argv)
+    markdown_renderer = MarkdownRenderer(response_textbox)
 
     transcriber = AudioTranscriber(user_audio_recorder.source, speaker_audio_recorder.source, model)
     transcribe = threading.Thread(target=transcriber.transcribe_audio_queue, args=(audio_queue,))
@@ -195,10 +214,13 @@ def main():
     root.grid_columnconfigure(1, weight=1)
 
     # Add the clear transcript button to the UI
-    clear_transcript_button = ctk.CTkButton(root, text="Yeni Konuşma", 
-                                          command=lambda: clear_context(transcriber, audio_queue, response_manager))
+    clear_transcript_button = ctk.CTkButton(
+        root, 
+        text="Yeni Konuşma", 
+        command=lambda: clear_context(transcriber, audio_queue, response_manager, response_textbox, responder)
+    )
     clear_transcript_button.grid(row=1, column=0, padx=10, pady=3, sticky="nsew")
-
+    
     freeze_state = [False]  # Using list to be able to change its content inside inner functions
     def freeze_unfreeze():
         freeze_state[0] = not freeze_state[0]  # Invert the freeze state
@@ -209,8 +231,8 @@ def main():
     update_interval_slider_label.configure(text=f"Update interval: {update_interval_slider.get()} seconds")
 
     update_transcript_UI(transcriber, transcript_textbox)
-    update_response_UI(responder, response_manager, response_textbox, 
-                       update_interval_slider_label, update_interval_slider, freeze_state)
+    update_response_UI(responder, response_manager, response_textbox, markdown_renderer,
+                  update_interval_slider_label, update_interval_slider, freeze_state)
  
     root.mainloop()
 

@@ -40,7 +40,7 @@ def generate_response_from_transcript(transcript):
     
 class GPTResponder:
     def __init__(self):
-        self.response = "Başlangıç mesajı..."  
+        self.response = "Konuşmaya başlayın..."  
         self.response_interval = 2
 
     def respond_to_transcriber(self, transcriber):
