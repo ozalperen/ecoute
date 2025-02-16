@@ -1,6 +1,8 @@
 import threading
 from AudioTranscriber import AudioTranscriber
 from GPTResponder import GPTResponder
+from MarkdownRenderer import MarkdownRenderer
+from ConversationSaver import ConversationSaver
 import customtkinter as ctk
 import AudioRecorder 
 import queue
@@ -10,13 +12,13 @@ import sys
 import TranscriberModels
 import subprocess
 from datetime import datetime
-from MarkdownRenderer import MarkdownRenderer
 
 class ResponseManager:
     def __init__(self):
         self.responses = []
         self.last_response = ""
         self.separator = "─" * 50  # Create a line with 50 dashes
+        self.conversation_saver = ConversationSaver()
     
     def add_response(self, text):
         if text != self.last_response and text.strip():
@@ -37,6 +39,11 @@ class ResponseManager:
     def clear_responses(self):
         self.responses.clear()
         self.last_response = ""
+        
+    def save_current_conversation(self, transcript):
+        """Save the current conversation and suggestions"""
+        formatted_suggestions = self.get_formatted_responses()
+        self.conversation_saver.save_conversation(transcript, formatted_suggestions)
 
 def update_transcript_UI(transcriber, textbox):
     transcript_string = transcriber.get_transcript()
@@ -69,7 +76,8 @@ def update_transcript_UI(transcriber, textbox):
     textbox.see("end")  # Scroll to the end
     textbox.after(300, update_transcript_UI, transcriber, textbox)
 
-def update_response_UI(responder, response_manager, textbox, markdown_renderer, update_interval_slider_label, update_interval_slider, freeze_state):
+def update_response_UI(responder, response_manager, textbox, markdown_renderer, 
+                      update_interval_slider_label, update_interval_slider, freeze_state):
     if not freeze_state[0]:
         # Add new response if it changed
         response_manager.add_response(responder.response)
@@ -94,7 +102,7 @@ def create_ui_components(root):
     ctk.set_default_color_theme("dark-blue")
     root.title("Cere Insight")
     root.configure(bg='#252422')
-    root.geometry("1200x600")
+    root.geometry("1000x600")
 
     font_size = 13
     title_font_size = 24
@@ -105,14 +113,14 @@ def create_ui_components(root):
     
     # Transcript title
     transcript_title = ctk.CTkLabel(transcript_frame, 
-                                  text="Transkript", 
+                                  text="Transcript", 
                                   font=("Arial", title_font_size, "bold"),
                                   text_color='#FFFCF2')
     transcript_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
     
     # Transcript textbox
     transcript_textbox = ctk.CTkTextbox(transcript_frame, 
-                                      width=50, 
+                                      width=150, 
                                       font=("Arial", font_size), 
                                       text_color='#FFFCF2', 
                                       wrap="word")
@@ -124,14 +132,14 @@ def create_ui_components(root):
     
     # Suggestions title
     suggestions_title = ctk.CTkLabel(suggestions_frame, 
-                                   text="Öneriler", 
+                                   text="Suggestions", 
                                    font=("Arial", title_font_size, "bold"),
                                    text_color='#FFFCF2')
     suggestions_title.grid(row=0, column=0, padx=10, pady=(5,10), sticky="w")
     
     # Suggestions textbox
     response_textbox = ctk.CTkTextbox(suggestions_frame, 
-                                    width=700, 
+                                    width=350, 
                                     font=("Arial", font_size), 
                                     text_color='#639cdc', 
                                     wrap="word")
@@ -156,6 +164,10 @@ def create_ui_components(root):
     return transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button
 
 def clear_context(transcriber, audio_queue, response_manager, response_textbox, responder):
+    # Save the conversation before clearing
+    transcript = transcriber.get_transcript()
+    response_manager.save_current_conversation(transcript)
+    
     # Clear all stored data
     transcriber.clear_transcript_data()
     response_manager.clear_responses()
@@ -178,11 +190,16 @@ def main():
         return
 
     root = ctk.CTk()
+    
+    # Create UI components
     transcript_textbox, response_textbox, update_interval_slider, update_interval_slider_label, freeze_button = create_ui_components(root)
 
+    # Initialize components
     audio_queue = queue.Queue()
     response_manager = ResponseManager()
+    markdown_renderer = MarkdownRenderer(response_textbox)
 
+    # Set up audio recording
     user_audio_recorder = AudioRecorder.DefaultMicRecorder()
     user_audio_recorder.record_into_queue(audio_queue)
 
@@ -191,14 +208,14 @@ def main():
     speaker_audio_recorder = AudioRecorder.DefaultSpeakerRecorder()
     speaker_audio_recorder.record_into_queue(audio_queue)
 
+    # Initialize and start transcription
     model = TranscriberModels.get_model('--local' in sys.argv)
-    markdown_renderer = MarkdownRenderer(response_textbox)
-
     transcriber = AudioTranscriber(user_audio_recorder.source, speaker_audio_recorder.source, model)
     transcribe = threading.Thread(target=transcriber.transcribe_audio_queue, args=(audio_queue,))
     transcribe.daemon = True
     transcribe.start()
 
+    # Initialize and start response generation
     responder = GPTResponder()
     respond = threading.Thread(target=responder.respond_to_transcriber, args=(transcriber,))
     respond.daemon = True
@@ -206,6 +223,7 @@ def main():
 
     print("READY")
 
+    # Configure grid weights
     root.grid_rowconfigure(0, weight=100)
     root.grid_rowconfigure(1, weight=1)
     root.grid_rowconfigure(2, weight=1)
@@ -213,7 +231,7 @@ def main():
     root.grid_columnconfigure(0, weight=2)
     root.grid_columnconfigure(1, weight=1)
 
-    # Add the clear transcript button to the UI
+    # Add buttons and controls
     clear_transcript_button = ctk.CTkButton(
         root, 
         text="Yeni Konuşma", 
@@ -221,18 +239,29 @@ def main():
     )
     clear_transcript_button.grid(row=1, column=0, padx=10, pady=3, sticky="nsew")
     
-    freeze_state = [False]  # Using list to be able to change its content inside inner functions
+    # Set up freeze/unfreeze functionality
+    freeze_state = [False]
     def freeze_unfreeze():
-        freeze_state[0] = not freeze_state[0]  # Invert the freeze state
+        freeze_state[0] = not freeze_state[0]
         freeze_button.configure(text="Devam Et" if freeze_state[0] else "Duraklat")
 
     freeze_button.configure(command=freeze_unfreeze)
 
+    # Set up window closing handler
+    def on_closing():
+        transcript = transcriber.get_transcript()
+        response_manager.save_current_conversation(transcript)
+        root.destroy()
+    
+    root.protocol("WM_DELETE_WINDOW", on_closing)
+
+    # Initialize UI update interval
     update_interval_slider_label.configure(text=f"Update interval: {update_interval_slider.get()} seconds")
 
+    # Start UI update loops
     update_transcript_UI(transcriber, transcript_textbox)
     update_response_UI(responder, response_manager, response_textbox, markdown_renderer,
-                  update_interval_slider_label, update_interval_slider, freeze_state)
+                      update_interval_slider_label, update_interval_slider, freeze_state)
  
     root.mainloop()
 
