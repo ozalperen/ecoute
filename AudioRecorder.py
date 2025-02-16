@@ -1,10 +1,15 @@
 import custom_speech_recognition as sr
 import pyaudiowpatch as pyaudio
 from datetime import datetime
+import winsound
+import threading
+import time
 
 RECORD_TIMEOUT = 3
 ENERGY_THRESHOLD = 1000
 DYNAMIC_ENERGY_THRESHOLD = False
+CALIBRATION_FREQUENCY = 1000  # 1000 Hz tone
+CALIBRATION_DURATION = 2000   # 2000 milliseconds = 2 seconds
 
 class BaseRecorder:
     def __init__(self, source, source_name):
@@ -19,7 +24,7 @@ class BaseRecorder:
         self.source_name = source_name
 
     def adjust_for_noise(self, device_name, msg):
-        print(f"[INFO] Adjusting for ambient noise from {device_name}. " + msg)
+        print(f"[INFO] Adjusting for ambient noise from {device_name}. {msg}")
         with self.source:
             self.recorder.adjust_for_ambient_noise(self.source)
         print(f"[INFO] Completed ambient noise adjustment for {device_name}.")
@@ -51,9 +56,23 @@ class DefaultSpeakerRecorder(BaseRecorder):
                     print("[ERROR] No loopback device found.")
         
         source = sr.Microphone(speaker=True,
-                               device_index= default_speakers["index"],
-                               sample_rate=int(default_speakers["defaultSampleRate"]),
-                               chunk_size=pyaudio.get_sample_size(pyaudio.paInt16),
-                               channels=default_speakers["maxInputChannels"])
+                             device_index=default_speakers["index"],
+                             sample_rate=int(default_speakers["defaultSampleRate"]),
+                             chunk_size=pyaudio.get_sample_size(pyaudio.paInt16),
+                             channels=default_speakers["maxInputChannels"])
         super().__init__(source=source, source_name="Musteri")
-        # self.adjust_for_noise("Default Speaker", "Please make or play some noise from the Default Speaker...")
+        
+        # Create and start a thread for playing the calibration tone
+        def play_calibration():
+            time.sleep(0.5)  # Small delay to ensure recording has started
+            print(f"[INFO] Playing calibration tone...")
+            winsound.Beep(CALIBRATION_FREQUENCY, CALIBRATION_DURATION)
+            
+        calibration_thread = threading.Thread(target=play_calibration)
+        calibration_thread.start()
+        
+        # Perform the noise adjustment while the tone is playing
+        self.adjust_for_noise("Default Speaker", "Calibrating with test tone...")
+        
+        # Wait for calibration tone to complete
+        calibration_thread.join()
